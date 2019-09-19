@@ -1,3 +1,4 @@
+"changbot"
 import random
 from enum import Enum
 import sc2
