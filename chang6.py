@@ -24,7 +24,7 @@ UNIT_TYPES = (UnitTypeId.MARINE, UnitTypeId.MARAUDER,
 
 FIRST_TYPES=(UnitTypeId.MARINE,UnitTypeId.MEDIVAC)
 CARE_TYPES=(UnitTypeId.MARINE,UnitTypeId.AUTOTURRET)
-
+PETRO_TYPES=(UnitTypeId.SIEGETANK,UnitTypeId.MARINE,UnitTypeId.MARAUDER)
 class TerreinManager(object):  
     def __init__(self, bot_ai):
         self.bot = bot_ai
@@ -122,10 +122,12 @@ class CombatGroupManager(object):
         self.count1 = 0
         self.tactics = tactics
         self.state = ''
+        self.shy=0
         self.switch=0
         self.perimeter_radious = 13
         self.region_radius = 10
-        self.searchpoint=0
+        self.searchpoint = None
+        self.state=0
         self.strategic_points = [
             Point3((28, 60, 12)),  # A
             Point3((63, 65, 10)),  # B
@@ -140,8 +142,11 @@ class CombatGroupManager(object):
             Point3((47.96,40.71,9)),
             Point3((49.64,37.76,9.99)),
         ]
+        self.reaper=[]
         self.marine=[]
         self.check=0
+        self.pet=0
+
     def reset(self):
         self.target = self.bot.terrein_manager.strategic_points[2]
         self.unit_tags = (self.bot.units & list()).tags
@@ -172,9 +177,10 @@ class CombatGroupManager(object):
 
         for unit in units:
 
-            if self.tactics == Tactics.NORMAL and self.count ==0:
+            if self.tactics == Tactics.NORMAL and self.count == 0:
                 actions += await self.normal_step(unit, units, enemy)
-            
+            elif self.tactics == Tactics.NORMAL and self.count ==1:
+                actions += await self.attack_step(unit,units,enemy)
                 
             elif self.tactics == Tactics.FIRST:
                 actions += await self.first_step(unit, units, enemy)    
@@ -225,6 +231,9 @@ class CombatGroupManager(object):
             enemyplace2 = Point3((14,21.75,9))
             arriveplace = Point3((14.19,26.63,9))
             bunkerplace=Point3((47.5,47.5,9.999828))
+            gatherplace = Point3((21,59,12))
+            settleplace= Point3((31.21,45.91,13.76))
+            
             
         else:
             protectplace = Point3((73,34.6,11.99))
@@ -233,6 +242,8 @@ class CombatGroupManager(object):
             bunkerplace=Point3((40.5,40.5,10))
             enemyplace = Point3((69.49,66.71,9))
             enemyplace2= Point3((73.49,66.71,9)) 
+            gatherplace = Point3((57,29,12))
+            settleplace =Point3((56.79,42.09,13.76))
         
         if unit.type_id == UnitTypeId.MARINE:
             self.marine.append(unit.tag)
@@ -261,7 +272,6 @@ class CombatGroupManager(object):
 
         elif unit.type_id ==  UnitTypeId.MEDIVAC:
             
-            
             units = self.bot.units.of_type(ARMY_TYPES).owned
            
             distance3 = ((arriveplace.x-unit.position3d.x)**2 + (arriveplace.y-unit.position3d.y)**2)**0.5 
@@ -280,30 +290,34 @@ class CombatGroupManager(object):
                         
                         actions.append(unit(AbilityId.UNLOADALLAT, arriveplace))
                         
-            else:
+            elif self.switch==1:
                 enemy = self.bot.known_enemy_units.of_type(UNIT_TYPES)
                 n_enemy = enemy.closer_than(11, unit.position).amount
                 n_unit= self.bot.units.of_type(UnitTypeId.MARINE).closer_than(11, unit.position).amount
                 
-                if n_enemy>3:
+                if unit.cargo_used==0 and n_unit==0:
+                    actions.append(unit.move(protectplace))
+                    distance = ((base.x-unit.position3d.x)**2 + (base.y-unit.position3d.y)**2)**0.5
+                    if distance <20:
+                        actions.append(unit.move(base))
+                        self.switch=2 
+                elif n_enemy>3:
                     actions.append(unit.move(enemyplace2))
                     self.count1=1
                 elif n_enemy==0:
                     actions.append(unit.move(enemyplace))
                     self.count1=0
-                elif unit.cargo_used==0 and n_unit==0:
-                    if not unit.has_buff(BuffId.MEDIVACSPEEDBOOST) :
-                        order = unit(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
-                        actions.append(order)
-                    else:
-                        actions.append(unit.move(base))
-
-                 
-
+            else:
+                target_pssn=self.bot.units.of_type(UnitTypeId.MARAUDER).closer_than(5,base)
+                if target_pssn.exists:
+                    actions.append(unit(AbilityId.LOAD,target_pssn.closest_to(base)))
+                elif unit.cargo_used>=4:
+                    actions.append(unit(AbilityId.UNLOADALLAT,settleplace))
        
         return actions
 
     async def normal_step(self, unit, friends, foes):
+        
         actions = list()
         self.target = self.strategic_points[2]   
         
@@ -311,12 +325,9 @@ class CombatGroupManager(object):
         center = self.strategic_points[2]
         homeenemy = self.bot.known_enemy_units.closer_than(10, base).amount
         
-
-
         if base.x<50:
             self.searchpoint = self.goal_point[3]
             bunkerplace=Point3((47.5,47.5,9.999828))
-
 
         else:
             self.searchpoint = self.goal_point[1]
@@ -350,7 +361,7 @@ class CombatGroupManager(object):
         
     
         if unit.type_id == UnitTypeId.MARINE:
-            if enemy>0:
+            if homeenemy>0:
                 actions.append(unit.move(base))
 
             else:
@@ -360,7 +371,7 @@ class CombatGroupManager(object):
             
             threaten = self.bot.known_enemy_units.closer_than(
                     self.perimeter_radious, unit.position)
-
+            
             if unit.health_percentage > 0.8 and unit.energy >= 50:
                 if threaten.amount > 0:
                     if unit.orders and unit.orders[0].ability.id != AbilityId.BUILDAUTOTURRET_AUTOTURRET:
@@ -371,8 +382,8 @@ class CombatGroupManager(object):
                         order = unit(AbilityId.BUILDAUTOTURRET_AUTOTURRET, pos)
                         actions.append(order)
                 else:
-                    if unit.distance_to(self.bot.terrein_manager.strategic_points[2]) > 5:
-                        order = unit.move(self.bot.terrein_manager.strategic_points[2])
+                    if unit.distance_to(self.target) > 5:
+                        order = unit.move(self.target)
                         actions.append(order)
 
             else:
@@ -383,7 +394,7 @@ class CombatGroupManager(object):
 
         elif unit.type_id == UnitTypeId.MARAUDER:
             bunk = self.bot.units.of_type(UnitTypeId.BUNKER).owned
-            if enemy>0:
+            if homeenemy>0:
                 actions.append(unit.move(base))
             elif bunk.amount==2:
                 actions.append(unit.move(bunkerplace))
@@ -398,19 +409,18 @@ class CombatGroupManager(object):
                 target_pssn = self.bot.units.filter(lambda u: u.position3d.z<=10).of_type(UnitTypeId.MARAUDER) 
                 actions.append(unit(AbilityId.LOAD,target_pssn.closest_to(bunkerplace)))
 
-
-
         elif unit.type_id == UnitTypeId.SIEGETANK or unit.type_id == UnitTypeId.SIEGETANKSIEGED:
             distance2=((upper_bush.x-unit.position3d.x)**2 + (upper_bush.y-unit.position3d.y)**2)**0.5 
             distance=((self.strategic_points[2].x-unit.position3d.x)**2 + (self.strategic_points[2].y-unit.position3d.y)**2)**0.5 
             
-            if self.check>0:
+            if self.check>2:
                 if distance2>1:
                     actions.append(unit.move(upper_bush))
                 else:
                     order = unit(AbilityId.SIEGEMODE_SIEGEMODE)  
                     actions.append(order)
             else:
+                
                 if unit.type_id == UnitTypeId.SIEGETANKSIEGED and distance>3:
                     order = unit(AbilityId.UNSIEGE_UNSIEGE)
                     actions.append(order)
@@ -422,19 +432,192 @@ class CombatGroupManager(object):
        
 
         elif unit.type_id == UnitTypeId.MEDIVAC:   
-            enemy = self.bot.known_enemy_units.of_type(CARE_TYPES)
-            m_enemy=enemy.closer_than(8, unit.position).amount
-            if m_enemy>0:
-                print('stop')
-                order = unit(AbilityId.HOLDPOSITION)
-                actions.append(order)
-            else:
-                actions.append(unit.move(self.searchpoint))
+            actions.append(unit.move(self.searchpoint))
             
 
         return actions
-
     
+    async def attack_step(self, unit, friends, foes):
+        actions = list()
+        self.target = self.goal_point[3]   
+        
+        base = self.bot.start_location
+        center = self.strategic_points[2]
+        homeenemy = self.bot.known_enemy_units.closer_than(10, base).amount
+        
+        if base.x<50:
+            self.searchpoint = self.goal_point[3]
+            bunkerplace=Point3((47.5,47.5,9.999828))
+            frontenemy= self.strategic_points[3]
+            enemycenter= self.strategic_points[4]
+            arriveplace= Point3((31.21,45.91,13.76))
+            
+
+        else:
+            self.searchpoint = self.goal_point[1]
+            bunkerplace=Point3((40.5,40.5,10))
+            frontenemy= self.strategic_points[1]
+            enemycenter = self.strategic_points[0]
+            arriveplace =Point3((56.79,42.09,13.76))
+            
+        our_bush = Point2(
+                (
+                    (base.x + center.x * 4) / 5, (base.y + center.y * 4) / 5
+                )
+            )
+        upper_bush = Point3(((base.x + center.x) / 2, (base.y + center.y) / 2, 12))
+        bush_backward = Point3(
+                ((base.x * 2 + center.x * 3) / 5, (base.y * 2 + center.y * 3) / 5, 10)
+            )
+        bush_center = Point2(
+            (
+                (bush_backward.x + our_bush.x) / 2, (bush_backward.y + our_bush.y) / 2
+            )
+        )
+        last_point =  Point2(
+                (
+                    (our_bush.x + center.x * 1) / 2, (our_bush.y + center.y * 1) / 2
+                )
+            )
+        bunk = self.bot.units.of_type(UnitTypeId.BUNKER).owned
+        MEDI = self.bot.units.of_type(UnitTypeId.MEDIVAC).owned
+        rep = self.bot.units.of_type(UnitTypeId.REAPER).owned.amount
+        can_atk = self.bot.known_enemy_units.in_attack_range_of(unit)
+        if unit.type_id == UnitTypeId.MARINE:
+            if homeenemy>0:
+                actions.append(unit.move(base))
+
+            else:
+                actions.append(unit.move(self.target))
+        elif unit.type_id == UnitTypeId.REAPER:
+            self.reaper.append(unit.tag)
+            n_units = self.bot.units.of_type(UnitTypeId.REAPER).closer_than(13,frontenemy).amount
+            if n_units>=4:
+                self.shy=2
+                
+            if unit.tag==self.reaper[0]:
+                threaten = self.bot.known_enemy_units.closer_than(
+                        self.perimeter_radious, unit.position)
+                enemy=self.bot.known_enemy_units.of_type(UnitTypeId.AUTOTURRET).closer_than(6,unit.position).amount
+                if unit.health_percentage > 0.8 and unit.energy >= 50:
+                    if threaten.amount > 0:
+                        if unit.orders and unit.orders[0].ability.id != AbilityId.BUILDAUTOTURRET_AUTOTURRET and enemy==0:
+                            closest_threat = threaten.closest_to(unit.position)
+                            pos = unit.position.towards(closest_threat.position, 5)
+                            pos = await self.bot.find_placement(
+                                UnitTypeId.AUTOTURRET, pos)
+                            order = unit(AbilityId.BUILDAUTOTURRET_AUTOTURRET, pos)
+                            actions.append(order)
+                    else:
+                        if unit.distance_to(base) > 5:
+                            order = unit.move(base)
+                            actions.append(order)
+            else:
+                if self.shy!=2:
+                    threaten = self.bot.known_enemy_units.closer_than(
+                            self.perimeter_radious, unit.position)
+
+                    if unit.health_percentage > 0.8 and unit.energy >= 50:
+                        if threaten.amount > 0:
+                            if unit.orders and unit.orders[0].ability.id != AbilityId.BUILDAUTOTURRET_AUTOTURRET:
+                                closest_threat = threaten.closest_to(unit.position)
+                                pos = unit.position.towards(closest_threat.position, 5)
+                                pos = await self.bot.find_placement(
+                                    UnitTypeId.AUTOTURRET, pos)
+                                order = unit(AbilityId.BUILDAUTOTURRET_AUTOTURRET, pos)
+                                actions.append(order)
+                                self.pet=1
+                        else:
+                            if unit.distance_to(frontenemy) > 5:
+                                order = unit.move(frontenemy)
+                                actions.append(order)
+                                self.pet=0
+
+                    else:
+                        if unit.distance_to(self.bot.terrein_manager.start_location) > 5:
+                            order = unit.move(self.bot.terrein_manager.start_location)
+                            actions.append(order)
+                else:
+                    threaten = self.bot.known_enemy_units.closer_than(
+                            self.perimeter_radious, unit.position)
+
+                    if unit.health_percentage > 0.8 and unit.energy >= 50:
+                        if threaten.amount > 0:
+                            if unit.orders and unit.orders[0].ability.id != AbilityId.BUILDAUTOTURRET_AUTOTURRET:
+                                closest_threat = threaten.closest_to(unit.position)
+                                pos = unit.position.towards(closest_threat.position, 5)
+                                pos = await self.bot.find_placement(
+                                    UnitTypeId.AUTOTURRET, pos)
+                                order = unit(AbilityId.BUILDAUTOTURRET_AUTOTURRET, pos)
+                                actions.append(order)
+                                
+                        else:
+                            if unit.distance_to(enemycenter) > 5:
+                                order = unit.move(enemycenter)
+                                actions.append(order)
+                                
+
+                    else:
+                        if unit.distance_to(self.bot.terrein_manager.start_location) > 5:
+                            order = unit.move(self.bot.terrein_manager.start_location)
+                            actions.append(order)
+
+
+
+        elif unit.type_id == UnitTypeId.MARAUDER:
+            can_atk = self.bot.known_enemy_units.in_attack_range_of(unit)
+            bunk = self.bot.units.of_type(UnitTypeId.BUNKER).owned
+            n_enemy=self.bot.known_enemy_units.closer_than(13,frontenemy).amount
+            n_unit=self.bot.units.closer_than(13,frontenemy).amount
+            if n_enemy==0 and n_unit>0:
+                self.shy=1
+            if self.shy==0:
+                if unit.position3d.z >10:
+                    actions.append(unit.move(base))
+                else:
+                    if self.pet==1:
+                        target1=frontenemy
+                        actions.append(unit.attack(target1.to2))
+                    elif self.pet==0:
+                        actions.append(unit.move(arriveplace))
+            elif self.shy==1 and n_unit<=10:
+                actions.append(unit.move(frontenemy))
+            elif n_unit>10:
+                target1=enemycenter
+                actions.append(unit.attack(target1.to2))
+                
+
+
+
+        
+        elif unit.type_id == UnitTypeId.BUNKER and unit.position3d.x>40 and unit.position3d.x<50:
+            enemy = self.bot.known_enemy_units
+            self.check = enemy.closer_than(10, unit.position).amount
+            if unit.cargo_used>0:
+                actions.append(unit(AbilityId.UNLOADALLAT, bunkerplace))
+
+        elif unit.type_id == UnitTypeId.SIEGETANK or unit.type_id == UnitTypeId.SIEGETANKSIEGED: 
+            distance=((self.target.x-unit.position3d.x)**2 + (self.target.y-unit.position3d.y)**2)**0.5 
+            if unit.type_id == UnitTypeId.SIEGETANKSIEGED and distance>2:
+                order = unit(AbilityId.UNSIEGE_UNSIEGE)
+                actions.append(order)
+            elif distance>2:
+                actions.append(unit.move(self.target))
+            else:
+                order = unit(AbilityId.SIEGEMODE_SIEGEMODE)  
+                actions.append(order)
+       
+
+        elif unit.type_id == UnitTypeId.MEDIVAC:   
+            n_enemy = self.bot.known_enemy_units.of_type(CARE_TYPES).closer_than(11,unit.position).amount
+            if n_enemy>0:
+                actions.append(unit.move(self.target))
+            else:
+                actions.append(unit.move(enemycenter))
+            
+            
+
+        return actions
 
     def debug(self):
         text = [
@@ -554,8 +737,6 @@ class ChangRush(sc2.BotAI):
             self.terrein_manager.step()
             self.assign_manager.assign(self.first_manager)
         
-    
-
         else:
             # 전략 변경
             self.strategic_manager.step()
@@ -577,8 +758,9 @@ class ChangRush(sc2.BotAI):
         if self.time <= 15:
             actions += await self.first_manager.step()
         else:
-            actions += await self.first_manager.step()
             actions += await self.combat_manager.step()
+            actions += await self.first_manager.step()
+            
       
         await self.do_actions(actions)
 
