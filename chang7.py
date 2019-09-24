@@ -222,6 +222,7 @@ class CombatGroupManager(object):
                 order = unit(AbilityId.EFFECT_STIM)
                 actions.append(order)
             else:    
+                
                 target1 = protectplace
                 actions.append(unit.attack(target1.to2))
 
@@ -260,23 +261,26 @@ class CombatGroupManager(object):
                 ((base.x * 2 + center.x * 3) / 5, (base.y * 2 + center.y * 3) / 5, 10)
         )
         if base.x<50:
-            firstplace=Point3((16,36,10.00))
+            firstplace=Point3((13.39,29.10,10.00))
             lastplace=Point3((18.46,21.42,10.00)) 
             ready_point = Point3((61.4, 43.3, 10))
-            enemycenter= self.strategic_points[4] 
+            enemycenter= self.strategic_points[4]
             arriveplace =Point3((58.08,36.39,11.99))
             frontplace = self.strategic_points[1]
+            enemyplace = self.strategic_points[4]
             
         else:
-            firstplace=Point3((72,52,10.00))
+            firstplace=Point3((74.61,58.88,10.00))
             lastplace=Point3((69.54,66.58,10.00))
             ready_point = Point3((26.6, 44.7, 10))
-            enemycenter = self.strategic_points[0]
+            enemycenter = Point3((28.5,57.68,11.99))
             frontplace = self.strategic_points[3]
+            enemyplace = self.strategic_points[0]
             arriveplace = Point3((29.92,52.17,11.99))
         
         if unit.type_id == UnitTypeId.MARINE:
             self.marine.append(unit.tag)
+            can_atk = self.bot.known_enemy_units.in_attack_range_of(unit)
             distance1=((firstplace.x-unit.position3d.x)**2 + (firstplace.y-unit.position3d.y)**2)**0.5 
             distance2 =((lastplace.x-unit.position3d.x)**2 + (lastplace.y-unit.position3d.y)**2)**0.5 
             distance3 =((ready_point.x-unit.position3d.x)**2 + (ready_point.y-unit.position3d.y)**2)**0.5 
@@ -309,9 +313,13 @@ class CombatGroupManager(object):
                         order = unit(AbilityId.EFFECT_STIM)
                         actions.append(order)
                     else:
-                        target1=enemycenter
-                        actions.append(unit.attack(target1.to2)) 
-                        self.state2=2      
+                        if (foes.of_type(UnitTypeId.MEDIVAC) & can_atk) :
+                            order = unit.attack(foes.of_type({UnitTypeId.MEDIVAC}).closest_to(unit.position))
+                            actions.append(order)
+                        else:
+                            target1=enemycenter
+                            actions.append(unit.attack(target1.to2)) 
+                            self.state2=2      
                 elif distance3>1  :
                     actions.append(unit.move(ready_point))
                     
@@ -328,7 +336,7 @@ class CombatGroupManager(object):
                     if self.bot.units.of_type(UnitTypeId.MARINE).filter(lambda u: u.position3d.z<10).closer_than(1,bush_backward)==1:
                         self.state2=1
             elif self.state2==1:
-                target_pssn= self.bot.units.of_type(UNIT_TYPES).closer_than(3,ready_point)
+                target_pssn= self.bot.units.of_type(UNIT_TYPES).filter(lambda u: u.position3d.z<10).closer_than(3,ready_point)
                 if unit.cargo_used>=5:
                     if not unit.has_buff(BuffId.MEDIVACSPEEDBOOST) :
                         order = unit(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
@@ -343,17 +351,14 @@ class CombatGroupManager(object):
                     else:
                         actions.append(unit(AbilityId.LOAD,target_pssn.closest_to(ready_point)))
             elif self.state2==2:
-                target_pssn1= self.bot.units.of_type(UNIT_TYPES).closer_than(10,ready_point)
+                target_pssn1= self.bot.units.of_type(UNIT_TYPES).filter(lambda u: u.position3d.z<11).closer_than(8,ready_point)
                 if unit.cargo_used>0:
                     actions.append(unit(AbilityId.UNLOADALLAT,arriveplace))
                 elif target_pssn1.exists:
-                    if not unit.has_buff(BuffId.MEDIVACSPEEDBOOST) :
-                        order = unit(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
-                        actions.append(order)
-                    else:
-                        actions.append(unit(AbilityId.LOAD,target_pssn1.closest_to(ready_point)))
+                    actions.append(unit(AbilityId.LOAD,target_pssn1.closest_to(ready_point)))
 
         elif unit.type_id ==  UnitTypeId.MARAUDER:
+            can_atk = self.bot.known_enemy_units.in_attack_range_of(unit)
             distance3 =((ready_point.x-unit.position3d.x)**2 + (ready_point.y-unit.position3d.y)**2)**0.5 
             distance4 =((enemycenter.x-unit.position3d.x)**2 + (enemycenter.y-unit.position3d.y)**2)**0.5 
             if self.bot.vespene<=1:
@@ -361,6 +366,7 @@ class CombatGroupManager(object):
                     order = unit(AbilityId.EFFECT_STIM)
                     actions.append(order)
                 else:
+                    
                     target1=frontplace
                     actions.append(unit.attack(frontplace)) 
 
@@ -369,20 +375,24 @@ class CombatGroupManager(object):
                     order = unit(AbilityId.EFFECT_STIM)
                     actions.append(order)
                 else:
-                    target1=enemycenter
-                    actions.append(unit.attack(target1.to2)) 
+                   
+                    if (foes.of_type(UnitTypeId.MEDIVAC) & can_atk) :
+                        order = unit.attack(foes.of_type({UnitTypeId.MEDIVAC}).closest_to(unit.position))
+                        actions.append(order)
+                    else:
+                        target1=enemycenter
+                        actions.append(unit.attack(target1.to2)) 
+                   
             elif distance3>1 :
                 actions.append(unit.move(ready_point))
                     
              
         elif unit.type_id == UnitTypeId.REAPER:
             distance3 =((ready_point.x-unit.position3d.x)**2 + (ready_point.y-unit.position3d.y)**2)**0.5 
-            threaten = self.bot.known_enemy_units.filter(lambda u: u.is_visible).of_type(SOL_TYPES).closer_than(
-                    self.perimeter_radious, unit.position)
             if self.rep==1 and unit.position3d.z<11:
                 actions.append(unit.move(enemycenter))        
             if unit.position3d.z > 11 and self.rep==1:
-                enemy=self.bot.known_enemy_units.closer_than(5,unit.position)
+                enemy=self.bot.known_enemy_units.of_type(SOL_TYPES).closer_than(6,unit.position)
                 if enemy.amount==0:
                     actions.append(unit.move(enemycenter))
                 else:
@@ -394,7 +404,7 @@ class CombatGroupManager(object):
             elif distance3 > 1:
                 order = unit.move(ready_point)
                 actions.append(order)
-                if distance3 <1.5:
+                if distance3 <2:
                     self.rep=1
             
         elif unit.type_id ==  UnitTypeId.SIEGETANK:
@@ -411,8 +421,6 @@ class CombatGroupManager(object):
 
 
 
-                        
-            
        
         return actions
 
@@ -423,7 +431,7 @@ class CombatGroupManager(object):
     def debug(self):
         text = [
 
-            f'Tactics: {self.tactics}, state: {self.state1},state:{self.state2}',
+            f'Tactics: {self.tactics}, state: {self.bot.known_enemy_units.of_type(SOL_TYPES).closer_than(13,self.bot.enemy_start_locations[0]).amount}',
         ]
         self.bot._client.debug_text_screen(
             '\n\n'.join(text), pos=(0.02, 0.14), size=10)
@@ -534,6 +542,7 @@ class ChangRush(sc2.BotAI):
 
     async def on_step(self, iteration: int):
         homeenemy=self.known_enemy_units.of_type(UNIT_TYPES).closer_than(13,self.start_location).amount
+        
         if homeenemy>0:
             self.strategic_manager.step()
             self.terrein_manager.step()
