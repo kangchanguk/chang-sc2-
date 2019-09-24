@@ -379,6 +379,8 @@ class CombatGroupManager(object):
             distance3 =((ready_point.x-unit.position3d.x)**2 + (ready_point.y-unit.position3d.y)**2)**0.5 
             threaten = self.bot.known_enemy_units.filter(lambda u: u.is_visible).of_type(SOL_TYPES).closer_than(
                     self.perimeter_radious, unit.position)
+            if self.rep==1 and unit.position3d.z<11:
+                actions.append(unit.move(enemycenter))        
             if unit.position3d.z > 11 and self.rep==1:
                 enemy=self.bot.known_enemy_units.closer_than(5,unit.position)
                 if enemy.amount==0:
