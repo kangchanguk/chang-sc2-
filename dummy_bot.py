@@ -32,11 +32,11 @@ class network(nn.Module):
         x= self.fc(x)
         return x
     
-def train(q,input,expect,optimizer):
-    loss=q.forward.item-expect
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+    def train(q,input,expect,optimizer):
+        loss=q.forward.item-expect
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
 
 
