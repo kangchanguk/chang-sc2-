@@ -15,6 +15,7 @@ class TestBot(sc2.BotAI):
             await self._client.send_debug()
         actions = list()
         await self.do_actions(actions)
+
 '''
 main points
 start view: 35.91650390625, 51.93310546875, 12
