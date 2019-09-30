@@ -10,6 +10,7 @@ from sc2.ids.buff_id import BuffId
 from sc2.unit import Unit
 from sc2.units import Units
 from IPython import embed
+import time
 
 ARMY_TYPES = (UnitTypeId.MARINE, UnitTypeId.MARAUDER,
     UnitTypeId.SIEGETANK, UnitTypeId.SIEGETANKSIEGED,
@@ -123,6 +124,7 @@ class CombatGroupManager(object):
         self.tactics = tactics
         self.state = ''
         self.shy=0
+        self.state1=0
         self.switch=0
         self.perimeter_radious = 13
         self.region_radius = 10
@@ -159,7 +161,7 @@ class CombatGroupManager(object):
         actions = list()
         n_unit= self.bot.units.of_type(SOL_TYPES).closer_than(11, self.strategic_points[2]).amount
         n_enemy = self.bot.known_enemy_units.closer_than(7,self.strategic_points[2]).amount
-        n_enemy1 = self.bot.known_enemy_units.of_type(UnitTypeId.MEDIVAC).amount
+        
         # 이 전투그룹에 속한 아군 유닛들
         units = self.units()
 
@@ -218,151 +220,251 @@ class CombatGroupManager(object):
         return actions
     
     async def first_step(self, unit, friends, foes):
-        
         actions = list()
+        self.target=self.strategic_points[2]
         base = self.bot.start_location
         center = self.strategic_points[2]
+        bush_backward = Point3(
+                ((base.x * 2 + center.x * 3) / 5, (base.y * 2 + center.y * 3) / 5, 10)
+        )
         upper_bush = Point3(((base.x + center.x) / 2, (base.y + center.y) / 2, 12))
         homeenemy = self.bot.known_enemy_units.closer_than(10, base).amount
+        medi=self.bot.units.of_type(UnitTypeId.MEDIVAC).owned
         if base.x<50:
             protectplace = Point3((7.04,53.42,11.99))
             protectplace1 = Point3((25.32,52.24,11.99))
-            frontplace = Point3((68.82,66,9))
-            enemyplace = Point3((18.84,21.75,9))
-            enemyplace2 = Point3((14,21.75,9))
-            arriveplace = Point3((14.19,26.63,9))
+            firstplace=Point3((13.39,29.10,10.00))
+            lastplace=Point3((18.46,21.42,10.00)) 
+            lastplace1=Point3((16.46,21.42,10.00))
             bunkerplace=Point3((47.5,47.5,9.999828))
-            gatherplace = Point3((21,59,12))
-            settleplace= Point3((31.21,45.91,13.76))
-            
-            
+            frontplace =self.strategic_points[1]
         else:
+            firstplace=Point3((74.61,58.88,10.00))
+            lastplace=Point3((69.54,66.58,10.00))
+            lastplace1=Point3((71.54,66.58,10.00))
             protectplace = Point3((73,34.6,11.99))
             protectplace1= Point3((62,35,11.99))
-            frontplace = Point3((19.18,17.97,9))
-            arriveplace = Point3((73.81,61.37,9))
             bunkerplace=Point3((40.5,40.5,10))
-            enemyplace = Point3((69.49,66.71,9))
-            enemyplace2= Point3((73.49,66.71,9)) 
-            gatherplace = Point3((57,29,12))
-            settleplace =Point3((56.79,42.09,13.76))
-        our_bush = Point2(
-                (
-                    (base.x + center.x * 4) / 5, (base.y + center.y * 4) / 5
-                )
-            )
-        upper_bush = Point3(((base.x + center.x) / 2, (base.y + center.y) / 2, 12))
-        bush_backward = Point3(
-                ((base.x * 2 + center.x * 3) / 5, (base.y * 2 + center.y * 3) / 5, 10)
-            )
-        bush_center = Point2(
-            (
-                (bush_backward.x + our_bush.x) / 2, (bush_backward.y + our_bush.y) / 2
-            )
-        )
-        last_point =  Point2(
-                (
-                    (our_bush.x + center.x * 1) / 2, (our_bush.y + center.y * 1) / 2
-                )
-            )
+            frontplace = self.strategic_points[3]
+
         if unit.type_id == UnitTypeId.MARINE:
-            self.marine.append(unit.tag)
+            n=0
+            for i in range(len(self.marine)):
+                if unit.tag==self.marine[i]:
+                    n=1
+            if n==0:
+                self.marine.append(unit.tag)
             
             distance=((frontplace.x-unit.position3d.x)**2 + (frontplace.y-unit.position3d.y)**2)**0.5 
-            distance1=((protectplace.x-unit.position3d.x)**2 + (protectplace.y-unit.position3d.y)**2)**0.5 
-            distance2 =((enemyplace2.x-unit.position3d.x)**2 + (enemyplace2.y-unit.position3d.y)**2)**0.5 
-            distance3 = ((arriveplace.x-unit.position3d.x)**2 + (arriveplace.y-unit.position3d.y)**2)**0.5 
+            distance1=((firstplace.x-unit.position3d.x)**2 + (firstplace.y-unit.position3d.y)**2)**0.5 
+            distance2 =((lastplace.x-unit.position3d.x)**2 + (lastplace.y-unit.position3d.y)**2)**0.5 
+
             if self.bot.time < 9:
                 actions.append(unit.move(upper_bush))
             
             else:
-                if unit.tag == self.marine[0] or unit.tag == self.marine[1]:
-                    if distance1>0.5 and distance3>10:
-                        actions.append(unit.move(protectplace))
+                if unit.tag == self.marine[0]:
+                    if unit.position3d.z>11:
+                        actions.append(unit.move(upper_bush))
                     else:
-                        enemy = self.bot.known_enemy_units.of_type(UNIT_TYPES)
-                        n_enemy = enemy.closer_than(5, unit.position).amount
-                        if self.count1==0:
-                            actions.append(unit.move(enemyplace))
+                        if distance1>0 and self.state1==0:
+                            if unit.health_percentage > 0.5 and not unit.has_buff(BuffId.STIMPACK):
+                                order = unit(AbilityId.EFFECT_STIM)
+                                actions.append(order)
+                            elif distance1<=0.5:
+                                self.state1=1
+                            else:
+                                actions.append(unit.move(firstplace))
+                   
+                        elif self.state1==1 and distance2>0.5:
+                            if unit.health_percentage > 0.5 and not unit.has_buff(BuffId.STIMPACK):
+                                order = unit(AbilityId.EFFECT_STIM)
+                                actions.append(order)
+                            else:
+                                actions.append(unit.move(lastplace))
+                        
+                        
+                elif unit.tag == self.marine[1]:
+                    if unit.position3d.z>11:
+                        actions.append(unit.move(upper_bush))
+                    else:
+                        
+                        if self.marine[0] in self.bot.state.dead_units:
+                            self.state1=3
+
+                        if distance1>0 and self.state1==3:
+                            if unit.health_percentage > 0.5 and not unit.has_buff(BuffId.STIMPACK):
+                                order = unit(AbilityId.EFFECT_STIM)
+                                actions.append(order)
+                            elif distance1<=0.5:
+                                self.state1=4
+                            else:
+                                actions.append(unit.move(firstplace))
+                   
+                        elif self.state1==4 and distance2>0.5:
+                            if unit.health_percentage > 0.5 and not unit.has_buff(BuffId.STIMPACK):
+                                order = unit(AbilityId.EFFECT_STIM)
+                                actions.append(order)
+                            else:
+                                actions.append(unit.move(lastplace))
+                                self.state1=5
+                        elif self.state1==5:
+                            distance=((lastplace.x-unit.position3d.x)**2 + (lastplace.y-unit.position3d.y)**2)**0.5 
+                            distance1=((lastplace1.x-unit.position3d.x)**2 + (lastplace1.y-unit.position3d.y)**2)**0.5 
+                            if distance1>0.5:
+                                actions.append(unit.move(lastplace1))
+                                time.sleep(2)
+                            elif distance>0.5:
+                                actions.append(unit.move(lastplace))
+                                time.sleep(2)
                         else:
-                            actions.append(unit.move(enemyplace2))
-                else:       
-                    if  homeenemy>0:
+                            actions.append(unit(AbilityId.HOLDPOSITION,bush_backward))
+
+                elif unit.tag == self.marine[2] or unit.tag == self.marine[3] or unit.tag == self.marine[4] or unit.tag == self.marine[5]:       
+                    if homeenemy>0:
                         if unit.health_percentage > 0.8 and not unit.has_buff(BuffId.STIMPACK):
                             order = unit(AbilityId.EFFECT_STIM)
                             actions.append(order)
                         else:    
-                            target1 = protectplace1
+                            target1 = self.bot.known_enemy_units.closer_than(13,self.bot.start_location).closest_to(unit.position),position
                             actions.append(unit.attack(target1.to2))   
                     else:
-                        actions.append(unit.move(frontplace))
+                        actions.append(unit.move(protectplace1))
+                else:
+                    bunk = self.bot.units.of_type(UnitTypeId.BUNKER).owned
+                    if self.bot.vespene<=1:
+                        if unit.health_percentage > 0.8 and not unit.has_buff(BuffId.STIMPACKMARAUDER):
+                        # 스팀팩 사용
+                            order = unit(AbilityId.EFFECT_STIM_MARAUDER)
+                            actions.append(order)
+                        else:
+                            target1=frontplace
+                            actions.append(unit.attack(target1.to2))
+                    elif homeenemy>0:
+                        if unit.health_percentage > 0.8 and not unit.has_buff(BuffId.STIMPACKMARAUDER):
+                        # 스팀팩 사용
+                            order = unit(AbilityId.EFFECT_STIM_MARAUDER)
+                            actions.append(order)
+                        else:    
+                            target1 = protectplace1
+                            actions.append(unit.attack(target1.to2))
+
+                    elif bunk.amount==2:
+                        actions.append(unit.move(bunkerplace))
+                    else:
+                        actions.append(unit.move(self.target))
+                            
                              
 
         elif unit.type_id ==  UnitTypeId.MEDIVAC:
-            units = self.bot.units.of_type(ARMY_TYPES).owned
-            distance3 = ((arriveplace.x-unit.position3d.x)**2 + (arriveplace.y-unit.position3d.y)**2)**0.5 
-            distance = ((enemyplace.x-unit.position3d.x)**2 + (enemyplace.y-unit.position3d.y)**2)**0.5 
-            target_pssn = self.bot.units.of_type(UnitTypeId.MARINE) 
-            drop=self.bot.known_enemy_units.of_type(UnitTypeId.MEDIVAC).closer_than(11,unit.position)
-           
             if homeenemy>0:
+                actions.append(unit(AbilityId.MEDIVACHEAL_HEAL, base))
+            
+            else:      
+                target_pssn1=self.bot.units.filter(lambda u: u.position3d.z>=11).closer_than(3,upper_bush)
                 if unit.cargo_used>0:
-                    actions.append(unit(AbilityId.UNLOADALLAT,arriveplace))
-                else:
+                    actions.append(unit(AbilityId.UNLOADALLAT,bush_backward))
+                elif target_pssn1.exists:
                     if not unit.has_buff(BuffId.MEDIVACSPEEDBOOST) :
                         order = unit(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
                         actions.append(order)
                     else:
-                        
-                        distance = ((base.x-unit.position3d.x)**2 + (base.y-unit.position3d.y)**2)**0.5
-                        if distance >= 20:
-                            actions.append(unit.move(protectplace))
-                        else:
-                            actions.append(unit.move(base))
-            
-            else:      
-                if self.switch==0:
-                    if unit.cargo_used<2 and distance3> 10:
-                        actions.append(unit(AbilityId.LOAD,target_pssn.closest_to(protectplace)))
-                    elif unit.cargo_used==0 and distance3 <5:
-                        self.switch=1
-                    elif unit.cargo_used==2:
-                        if not unit.has_buff(BuffId.MEDIVACSPEEDBOOST) :
-                            order = unit(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
-                            actions.append(order)
-                        else:
-                            actions.append(unit(AbilityId.UNLOADALLAT, arriveplace))
-                            
-                elif self.switch==1:
-                    enemy = self.bot.known_enemy_units.of_type(UNIT_TYPES)
-                    n_enemy = enemy.closer_than(11, unit.position).amount
-                    n_unit= self.bot.units.of_type(UnitTypeId.MARINE).closer_than(11, unit.position).amount
-                    ebunk = self.bot.known_enemy_units.of_type(UnitTypeId.BUNKER).closer_than(11,self.strategic_points[2]).amount
-                    etur = self.bot.known_enemy_units.of_type(UnitTypeId.AUTOTURRET).closer_than(11,self.strategic_points[2]).amount
-                    
-                    if unit.cargo_used==0 and n_unit==0:
-                        if not unit.has_buff(BuffId.MEDIVACSPEEDBOOST) :
-                            order = unit(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
-                            actions.append(order)
-                        else:
-                            actions.append(unit.move(protectplace))
-                            distance = ((base.x-unit.position3d.x)**2 + (base.y-unit.position3d.y)**2)**0.5
-                            if distance <20:
-                                actions.append(unit.move(base))
-                                self.switch=2 
-                    elif n_enemy>3:
-                        actions.append(unit.move(enemyplace2))
-                        self.count1=1
-                    elif n_enemy==0:
-                        actions.append(unit.move(enemyplace))
-                        self.count1=0
+                        actions.append(unit(AbilityId.LOAD,target_pssn1.closest_to(upper_bush)))
                 else:
-                    target_pssn1=self.bot.units.of_type((UnitTypeId.MARAUDER)).closer_than(5,base)
-                    if unit.cargo_used>=6:
-                        actions.append(unit(AbilityId.UNLOADALLAT,settleplace))
-                    elif target_pssn1.exists: 
-                        actions.append(unit(AbilityId.LOAD,target_pssn1.closest_to(base)))
-                        
+                    n_enemy = self.bot.known_enemy_units.of_type(SOL_TYPES).closer_than(8,unit.position)
+                    if n_enemy.amount>0:
+                        actions.append(unit.move(upper_bush))
+                    else:
+                        actions.append(unit.move(self.target))
+                   
+                
+           
+
+        elif unit.type_id == UnitTypeId.REAPER:
+            if homeenemy>0:
+                enemy=self.bot.known_enemy_units.closer_than(7,unit.position)
+                if enemy.amount==0:
+                    actions.append(unit.move(protectplace1))
+                else:
+                    pos = await self.bot.find_placement(
+                        UnitTypeId.AUTOTURRET, unit.position)
+                    order = unit(AbilityId.BUILDAUTOTURRET_AUTOTURRET, pos)
+                    actions.append(order)
+                 
+            else:
+                threaten = self.bot.known_enemy_units.closer_than(
+                        self.perimeter_radious, unit.position)
+                
+                if unit.health_percentage > 0.8 and unit.energy >= 50:
+                    if threaten.amount > 0:
+                        if unit.orders and unit.orders[0].ability.id != AbilityId.BUILDAUTOTURRET_AUTOTURRET:
+                            closest_threat = threaten.closest_to(unit.position)
+                            pos = unit.position.towards(closest_threat.position, 5)
+                            pos = await self.bot.find_placement(
+                                UnitTypeId.AUTOTURRET, pos)
+                            order = unit(AbilityId.BUILDAUTOTURRET_AUTOTURRET, pos)
+                            actions.append(order)
+                    else:
+                        if unit.distance_to(self.target) > 5:
+                            order = unit.move(self.target)
+                            actions.append(order)
+
+                else:
+                    if unit.distance_to(self.bot.terrein_manager.start_location) > 5:
+                        order = unit.move(self.bot.terrein_manager.start_location)
+                        actions.append(order)
+
+
+        elif unit.type_id == UnitTypeId.MARAUDER:
+            bunk = self.bot.units.of_type(UnitTypeId.BUNKER).owned
+            
+            if self.bot.vespene<=1:
+                target1=frontplace
+                actions.append(unit.attack(target1.to2))
+            elif homeenemy>0:
+                if unit.health_percentage > 0.8 and not unit.has_buff(BuffId.STIMPACKMARAUDER):
+                # 스팀팩 사용
+                    order = unit(AbilityId.EFFECT_STIM_MARAUDER)
+                    actions.append(order)
+                else:    
+                    target1 = protectplace1
+                    actions.append(unit.attack(target1.to2))
+            else: 
+                if medi.amount>0 and unit.position3d.z>10:
+                    actions.append(unit.move(upper_bush))
+                elif unit.position3d.z<=11:
+                    actions.append(unit.move(bunkerplace))
+                else:
+                    actions.append(unit.move(self.target))
+        
+        elif unit.type_id == UnitTypeId.BUNKER and unit.position3d.x>40 and unit.position3d.x<50:
+            if self.bot.vespene<=1:
+                actions.append(unit(AbilityId.UNLOADALL_BUNKER))
+                
+            elif self.bot.units.of_type(UnitTypeId.MARAUDER).closer_than(5, bunkerplace).amount > 0:
+                target_pssn = self.bot.units.filter(lambda u: u.position3d.z<=10).of_type(UnitTypeId.MARAUDER) 
+                actions.append(unit(AbilityId.LOAD,target_pssn.closest_to(bunkerplace)))
+            elif self.bot.units.of_type(UnitTypeId.MARINE).closer_than(5, bunkerplace).amount > 0:
+                target_pssn = self.bot.units.filter(lambda u: u.position3d.z<=10).of_type(UnitTypeId.MARINE) 
+                actions.append(unit(AbilityId.LOAD,target_pssn.closest_to(bunkerplace)))
+
+        elif unit.type_id == UnitTypeId.SIEGETANK:
+            distance2=((upper_bush.x-unit.position3d.x)**2 + (upper_bush.y-unit.position3d.y)**2)**0.5 
+            distance=((center.x-unit.position3d.x)**2 + (center.y-unit.position3d.y)**2)**0.5 
+            if homeenemy>0:
+                order = unit(AbilityId.SIEGEMODE_SIEGEMODE)  
+                actions.append(order)
+            else:
+
+                if medi.amount>0 and unit.position3d.z>11:
+                    actions.append(unit.move(upper_bush))
+                elif unit.position3d.z<11:
+                    n_enemy=self.bot.units.of_type(UnitTypeId.SIEGETANKSIEGED).closer_than(13,unit.position).amount
+                    if n_enemy==0:
+                        actions.append(unit.move(self.target))
+                    else:
+                        order = unit(AbilityId.SIEGEMODE_SIEGEMODE)  
+                        actions.append(order)               
                     
        
         return actions
@@ -420,98 +522,7 @@ class CombatGroupManager(object):
         can_atk = self.bot.known_enemy_units.in_attack_range_of(unit)
         
     
-        if unit.type_id == UnitTypeId.MARINE:
-            if homeenemy>0:
-                if unit.health_percentage > 0.8 and not unit.has_buff(BuffId.STIMPACK) :
-                # 스팀팩 사용
-                    order = unit(AbilityId.EFFECT_STIM)
-                    actions.append(order)
-                else:    
-                    target1 = protectplace1
-                    actions.append(unit.attack(target1.to2))
-            elif self.bot.vespene<3:
-                if unit.health_percentage > 0.8 and not unit.has_buff(BuffId.STIMPACK):
-                # 스팀팩 사용
-                    order = unit(AbilityId.EFFECT_STIM)
-                    actions.append(order)
-                else:    
-                    target1 = frontplace
-                    actions.append(unit.attack(target1.to2))
-            else:
-                actions.append(unit.move(bunkerplace))
-
-        elif unit.type_id == UnitTypeId.REAPER:
-            if homeenemy>0:
-                enemy=self.bot.known_enemy_units.closer_than(7,unit.position)
-                if enemy.amount==0:
-                    actions.append(unit.move(protectplace1))
-                else:
-                    pos = await self.bot.find_placement(
-                        UnitTypeId.AUTOTURRET, unit.position)
-                    order = unit(AbilityId.BUILDAUTOTURRET_AUTOTURRET, pos)
-                    actions.append(order)
-                 
-            else:
-                threaten = self.bot.known_enemy_units.closer_than(
-                        self.perimeter_radious, unit.position)
-                
-                if unit.health_percentage > 0.8 and unit.energy >= 50:
-                    if threaten.amount > 0:
-                        if unit.orders and unit.orders[0].ability.id != AbilityId.BUILDAUTOTURRET_AUTOTURRET:
-                            closest_threat = threaten.closest_to(unit.position)
-                            pos = unit.position.towards(closest_threat.position, 5)
-                            pos = await self.bot.find_placement(
-                                UnitTypeId.AUTOTURRET, pos)
-                            order = unit(AbilityId.BUILDAUTOTURRET_AUTOTURRET, pos)
-                            actions.append(order)
-                    else:
-                        if unit.distance_to(self.target) > 5:
-                            order = unit.move(self.target)
-                            actions.append(order)
-
-                else:
-                    if unit.distance_to(self.bot.terrein_manager.start_location) > 5:
-                        order = unit.move(self.bot.terrein_manager.start_location)
-                        actions.append(order)
-
-
-        elif unit.type_id == UnitTypeId.MARAUDER:
-            bunk = self.bot.units.of_type(UnitTypeId.BUNKER).owned
-            if homeenemy>0:
-                if unit.health_percentage > 0.8 and not unit.has_buff(BuffId.STIMPACKMARAUDER):
-                # 스팀팩 사용
-                    order = unit(AbilityId.EFFECT_STIM_MARAUDER)
-                    actions.append(order)
-                else:    
-                    target1 = protectplace1
-                    actions.append(unit.attack(target1.to2))
-           
-
-            elif bunk.amount==2:
-                actions.append(unit.move(bunkerplace))
-            else:
-                actions.append(self.target)
-        
-        elif unit.type_id == UnitTypeId.BUNKER and unit.position3d.x>40 and unit.position3d.x<50:
-            if self.bot.units.of_type(UnitTypeId.MARAUDER).closer_than(5, bunkerplace).amount > 0:
-                target_pssn = self.bot.units.filter(lambda u: u.position3d.z<=10).of_type(UnitTypeId.MARAUDER) 
-                actions.append(unit(AbilityId.LOAD,target_pssn.closest_to(bunkerplace)))
-            elif self.bot.units.of_type(UnitTypeId.MARINE).closer_than(5, bunkerplace).amount > 0:
-                target_pssn = self.bot.units.filter(lambda u: u.position3d.z<=10).of_type(UnitTypeId.MARINE) 
-                actions.append(unit(AbilityId.LOAD,target_pssn.closest_to(bunkerplace)))
-
-        elif unit.type_id == UnitTypeId.SIEGETANK:
-            distance2=((upper_bush.x-unit.position3d.x)**2 + (upper_bush.y-unit.position3d.y)**2)**0.5 
-            distance=((center.x-unit.position3d.x)**2 + (center.y-unit.position3d.y)**2)**0.5 
-            if homeenemy>0:
-                order = unit(AbilityId.SIEGEMODE_SIEGEMODE)  
-                actions.append(order)
-            else:
-                if distance>2:
-                    actions.append(unit.move(center))
-                else:
-                    order = unit(AbilityId.SIEGEMODE_SIEGEMODE)  
-                    actions.append(order)
+        '''
 
         elif unit.type_id == UnitTypeId.MEDIVAC:   
             n_enemy=self.bot.known_enemy_units.of_type(CARE_TYPES).closer_than(7,unit.position).amount
@@ -520,7 +531,7 @@ class CombatGroupManager(object):
             else:
                 actions.append(unit.move(center))
             
-            
+        '''    
 
         return actions
     
@@ -772,7 +783,7 @@ class AssignManager(object):
         units = self.bot.units
 
         if manager.tactics is Tactics.FIRST:
-            units = self.bot.units.of_type(FIRST_TYPES).owned
+            units = self.bot.units.of_type(ARMY_TYPES).owned
             unit_tags = units.tags
             manager.unit_tags = unit_tags
 
@@ -816,7 +827,7 @@ class ChangRush(sc2.BotAI):
         매니저 단위로 작업을 분리하여 보다 간단하게 on_step을 구현
         """
 
-        if self.time <= 15:
+        if self.time <= 300:
             self.strategic_manager.step()
             self.terrein_manager.step()
             self.assign_manager.assign(self.first_manager)
@@ -839,7 +850,7 @@ class ChangRush(sc2.BotAI):
             
 
         actions = list()
-        if self.time <= 15:
+        if self.time <= 300:
             actions += await self.first_manager.step()
         else:
             actions += await self.combat_manager.step()
